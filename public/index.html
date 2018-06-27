@@ -1,0 +1,80 @@
+<div>
+  <div class="current">
+  </div>
+  <div class="status">
+    Stopped
+  </div>
+</div>
+<div>
+  <button class="start">
+    Start
+  </button>
+  <button class="stop">
+    Stop
+  </button>
+  <button class="reset">
+    Reset
+  </button>
+  <label for="poll-until">Poll until</label>
+  <input type="number" id="poll-until" value="10"/>  
+</div>
+
+<script src="https://unpkg.com/axios@0.18.0/dist/axios.min.js"></script>
+<script src="https://unpkg.com/baconjs@2.0.7/dist/Bacon.js"></script>
+<script>
+  const startButton = document.querySelector('.start');
+  const stopButton = document.querySelector('.stop');
+  const resetButton = document.querySelector('.reset');
+  const pollUntilInput = document.querySelector('#poll-until');
+  const currentCountArea = document.querySelector('.current');
+  const statusArea = document.querySelector('.status');
+  
+  const startClickStream = Bacon.fromEvent(startButton, 'click')
+    .map(_ => 'start');
+  const stopClickStream = Bacon.fromEvent(stopButton, 'click')
+    .map(_ => 'stop');
+  const resetClickStream = Bacon.fromEvent(resetButton, 'click')
+    .map(_ => 'reset');
+  
+  const pollUntilValueStream = Bacon.fromEvent(pollUntilInput, 'change')
+    .map(event => parseInt(event.target.value, 10))
+    .startWith(parseInt(pollUntilInput.value, 10));
+  
+  const statusStream = Bacon.once('start').concat(
+    Bacon.mergeAll(startClickStream, stopClickStream, resetClickStream)
+  );
+  
+  const pollUntilValue = pollUntilValueStream.toProperty();
+  
+  const pollStream = startClickStream
+    .flatMap(() =>
+       Bacon.interval(100, undefined)
+        .takeUntil(stopClickStream)
+        .flatMap(() =>
+          Bacon.fromPromise(axios.get('https://observable-poll-bacon.glitch.me/count'))
+        )
+        .map(res => res.data)
+        .map(data => data.count)
+        .combine(pollUntilValue.sampledBy(pollStream), (count, pollUntilValue) => ({ count, pollUntilValue }))
+       .log()
+        // .takeWhile(({ count, pollUntilValue }) => count <= pollUntilValue)
+        // .map(({ count }) => count)
+   );
+    // 
+    // .takeWhile((pollUntilValue, count)  => count <= pollUntilValue, pollUntilValue);
+  
+  const resetRequestStream = resetClickStream.flatMap(() => 
+    Bacon.fromPromise(axios.get('https://observable-poll-bacon.glitch.me/reset'))
+  ).log();
+  
+  pollStream.onValue(count => {
+    console.log(count)
+    currentCountArea.innerHTML = count;
+  });
+  
+  statusStream
+    .onValue(event => {
+      statusArea.innerHTML = event;
+    });
+  
+</script>
